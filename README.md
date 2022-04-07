@@ -1,8 +1,8 @@
 # Minigif
 
-This is Gif encoder for JavaScript. I did it for fun and for I project I was making... for fun.
+Create Gifs in JavaScript from image paths or canvas or img elements.
 
-Although it is very not-so-optimized, it can be used to creade gifs from image paths, canvas and img elements.
+This library is very NOT optimized, I did it for fun and for I project I was making... for fun.
 
 ## usage
 
@@ -32,7 +32,7 @@ const options = {
 ```
 
 To take into account:
-- The first frame added defines the gif width and height
-- Depending on image dimensions and color palette, it can take some seconds to finish
+- The first frame added defines the width and height of the gif file
+- Depending on image dimensions and color palette, it can take some seconds to finish processing
 - If you include a custom color palette, it must have  2^(colorResolution + 1) colors, especified in an array with arrays of RGBA values
 - It uses Median Cut Algorithm to define the color Palette and Floyd-Steinberg Algorithm for dithering (optional)
