@@ -16,7 +16,7 @@ const buffer = gif.makeGif();
 gif.download(buffer); // downloads from browser
 ```
 
-This are all the available options (they are all optional):
+This are all the available options (they are all optional, default are shown):
 
 ```JavaScript
 const options = {
@@ -34,5 +34,15 @@ const options = {
 To take into account:
 - The first frame added defines the width and height of the gif file
 - Depending on image dimensions and color palette, it can take some seconds to finish processing
-- If you include a custom color palette, it must have  2^(colorResolution + 1) colors, especified in an array with arrays of RGBA values
-- It uses Median Cut Algorithm to define the color Palette and Floyd-Steinberg Algorithm for dithering (optional)
+- If you include a custom color palette, it must have  2^(colorResolution + 1) colors, especified in an array with arrays of RGBA values, see table below.
+- Otherwise it uses Median Cut Algorithm to define the color Palette and Floyd-Steinberg Algorithm for dithering (optional)
+
+| color resolution | colors in palette |
+| -- | --- |
+| 1  | 4   |
+| 2  | 8   |
+| 3  | 16  |
+| 4  | 32  |
+| 5  | 64  |
+| 6  | 128 |
+| 7  | 256 |
