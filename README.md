@@ -1,8 +1,7 @@
 # Minigif
 
 Create Gifs in JavaScript from image paths or canvas or img elements.
-
-This library is very NOT optimized, I did it for fun and for I project I was making... for fun.
+This library uses only vanilla Javascript.
 
 ## usage
 
@@ -26,7 +25,7 @@ const options = {
     transparentIndex: 0, // set transparent color index in palette
     dither: false, // use error difussion dither
     delay: 50, // animation frame delay (in 1/100 of a second)
-    customPalette: undefined, // a 2d RGBA array,
+    customPalette: undefined, // a 2d RGB array,
     filename: 'minigif'
   }
 ```

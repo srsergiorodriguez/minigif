@@ -87,9 +87,7 @@ class MiniGif {
 
     for (let i = 0; i < this.framesPixels.length; i++) {
       const indexStream = this.quantizeFunction(this.framesPixels[i], this.globalColorTable);
-      console.time("ttt");
       const codeStream = this.getCodeStream(indexStream, codeTableData);
-      console.timeEnd("ttt");
       this.framesImageData[i] = this.getImageData(codeStream);
     }
 
@@ -388,9 +386,8 @@ class MiniGif {
 
   findClosest(c, colors) {
     const cs = this.colorCode(c);
-    if (this.distanceMemo[cs] !== undefined) {
-      return this.distanceMemo[cs];
-    }
+    if (this.distanceMemo[cs] !== undefined) return this.distanceMemo[cs]
+
     let index = 0;
     let minDistance = Number.MAX_VALUE;
     let count = 0;
@@ -415,12 +412,6 @@ class MiniGif {
 
   calculateError(c1, c2) {
     return c1[0] - c2[0] +  c1[1] - c2[1] +  c1[2] - c2[2];
-  }
-
-  errorCode(rgb, i) {
-    const mask = 0xfffffff;
-    const hex = ((1 << 32) + (i << 24) + (rgb[0] << 16) + (rgb[1] << 8) + rgb[2]) & mask;
-    return hex
   }
 
   euclideanDistance(c1, c2) {
