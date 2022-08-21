@@ -237,7 +237,7 @@ class MiniGif {
 
   structureGif() {
     const packedField = parseInt(`1${this.toBin(this.colorResolution, 3)}0${this.toBin(this.colorResolution,3)}`, 2);
-    const header = concatArrayBuffers(...[
+    const header = concatArrayBuffers(
       //header
       rawString('GIF89a'),
       // logical screen descriptor
@@ -246,12 +246,12 @@ class MiniGif {
       U8(packedField),
       U8(0),
       U8(0)
-    ]);
+    );
   
     // global color table here
 
     const loopRepetitions = 0; // 0 es infinito
-    const applicationExtension = concatArrayBuffers(...[
+    const applicationExtension = concatArrayBuffers(
       U8(33), // 33 (hex 0x21) GIF Extension code
       U8(255), // 255 (hex 0xFF) Application Extension Label
       U8(11), // 11 (hex 0x0B) Length of Application Block
@@ -260,7 +260,7 @@ class MiniGif {
       U8(1), // 1 (hex 0x01)
       U16LE(loopRepetitions),
       U8(0) // terminator
-    ]);
+    );
 
     // PARA CADA IMAGEN DE LA ANIMACIÓN HAY QUE HACER ESTAS TRES: graphicsColorExtension, imageDescriptor, imageData
     const transparentFlag = this.transparent === true ? 1 : 0;
@@ -271,7 +271,7 @@ class MiniGif {
     const globalImageData = [];
     for (let i = 0; i < this.framesImageData.length; i++) {
 
-      const graphicsControlExtension = concatArrayBuffers(...[
+      const graphicsControlExtension = concatArrayBuffers(
         U8(33), // Extension introducer - always 21 hex
         U8(249), // Graphic Control label - always f9 hex
         U8(4), // Byte size
@@ -279,17 +279,17 @@ class MiniGif {
         U16LE(this.delay), // Delay time
         U8(this.transparentIndex), // Transparent color index
         U8(0) // Block terminator - always 0
-      ]);
+      );
       globalImageData.push(graphicsControlExtension);
       
-      const imageDescriptor = concatArrayBuffers(...[
+      const imageDescriptor = concatArrayBuffers(
         U8(44), // Image Separator - always 2C hex
         U16LE(0), // Image left,
         U16LE(0), // ImageTop,
         U16LE(this.width), // Width,
         U16LE(this.height), // Height
         U8(imageDescriptorPackedField),
-      ]);
+      );
 
       globalImageData.push(imageDescriptor);
 
@@ -299,13 +299,13 @@ class MiniGif {
     
     const trailer = new Uint8Array([59]) // 3b hex semicolon indicating end of file
   
-    const gifFile = concatArrayBuffers(...[
+    const gifFile = concatArrayBuffers(
       header,
       this.globalColorTable,
       applicationExtension,
       ...globalImageData,
       trailer
-    ]);
+    );
     
     return gifFile
 
@@ -429,7 +429,7 @@ class MiniGif {
     const nrRandoms = Math.max(1000,Math.floor(2*pixels.length/1000));
     const drops = new Array(nrRandoms).fill(0).map(() => Math.random() > 0.02); // Una secuencia de booleanos aleatorios para no calcular tantas veces
     for (let i = 0; i < pixels.length; i+=4) { // crear el primer bin a partir de los pixels
-      if (drops[i%1000]) continue // salta pixels para hacer más pequeña la muestra
+      if (drops[i%nrRandoms]) continue // salta pixels para hacer más pequeña la muestra
       cols[counter] = [];
       for (let j = 0; j < 3; j++) {
         cols[counter][j] = pixels[i + j];
