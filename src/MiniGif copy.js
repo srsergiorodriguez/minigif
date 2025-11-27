@@ -1,7 +1,7 @@
 class MiniGif {
   /* 
   MiniGif 
-  v.1.1.0
+  v.1.0.2
   By Sergio Rodríguez Gómez
   MIT LICENSE
   https://github.com/srsergiorodriguez/
@@ -79,35 +79,8 @@ class MiniGif {
       this.allPixels.set(this.framesPixels[i], i * nrPixels);
     }
 
-    // Prepare Palette
-    let colors;
-    
-    if (this.customPalette) {
-      // Strip Alpha channel (RGBA -> RGB) if present
-      colors = this.customPalette.map(c => c.slice(0, 3));
-
-      // Auto-calculate Color Resolution based on palette size
-      const validCount = Math.max(colors.length, 2); // Min 2 colors
-      const bits = Math.ceil(Math.log2(validCount));
-      this.colorResolution = Math.max(0, bits - 1);
-      this.colorTableSize = 1 << (this.colorResolution + 1);
-    } else {
-      // Auto-generate palette
-      const pixelCount = this.framesPixels[0].length;
-      const allPixels = new Uint8Array(this.framesPixels.length * pixelCount);
-      for (let i = 0; i < this.framesPixels.length; i++) {
-        allPixels.set(this.framesPixels[i], i * pixelCount);
-      }
-      colors = this.medianCutColors(allPixels);
-    }
-
-    // Pad the Global Color Table to power of 2
-    this.globalColorTable = new Uint8Array(this.colorTableSize * 3);
-    colors.forEach((c, i) => {
-      if (i < this.colorTableSize) {
-        this.globalColorTable.set(c, i * 3);
-      }
-    });
+    const colors = this.customPalette || this.medianCutColors(this.allPixels);
+    this.globalColorTable = this.getColorTable(colors);
     
     // const codeTableData = this.getCodeTable(colors);
     this.quantizeFunction = this.dither ? this.errorDiffusionDither : this.simpleQuantize;
@@ -126,101 +99,101 @@ class MiniGif {
     return new Uint8Array(colors.flat());
   }
 
-getCodeStream(indexStream, colors) {
+  getCodeStream(indexStream, colors) {
+    // codifica el indexStream usando el algoritmo LZW y ajusta los tamaños de los códigos variables
+    // let {CCindex, EOIindex, resetCodeTableDict} = codeTableData;
     const CCindex = colors.length;
     const EOIindex = colors.length + 1;
+    const resetCodeTableDict = {};
+    
+    for (let i = 0; i < colors.length; i++) {
+      resetCodeTableDict[i] = i;
+    }
 
     const minimumCodeSize = Math.max(2, this.colorResolution + 1);
     let lastCodeSize;
     let streamStart = 0;
 
+    // 
+    // const resetCodeTableDict = {}
+    const createKey = (prefix, suffix) => (prefix << 16) | suffix;
+    for (let i = 0; i <= CCindex; i++) {
+      // resetCodeTableDict[createKey(CCindex, i)] = i;
+      // resetCodeTableDict.set(createKey(CCindex, i), i);
+    }
+
+    ///////
     const byteSize = 8;
     let bytesStream = [0];
     const bytemask = 0b11111111;
-    let numCount = 0; 
+    let numCount = 0; // counter of current byte being written
     let displace = 0;
-
+    
     function addCode(code, codeSize) {
       const newCode = code << displace;
-      const bitsAvailable = byteSize - displace; 
-      if (bitsAvailable <= codeSize) { 
-        bytesStream[numCount] = (bytesStream[numCount] | newCode) & bytemask; 
+      const bitsAvailable = byteSize - displace; // bits available in current byte
+      if (bitsAvailable <= codeSize) { // there is not enough space for new code in byte
+        bytesStream[numCount] = (bytesStream[numCount] | newCode) & bytemask; // add all bits possible and crop
 
-        let fraction = code >>> bitsAvailable; // Use >>> for safer unsigned shift
+        let fraction = code >>> bitsAvailable;
         let tempDisplace = codeSize - bitsAvailable;
-        numCount++; 
+        numCount++; // advance to next byte
         bytesStream[numCount] = fraction & bytemask;
 
         while (tempDisplace >= byteSize) {
           fraction = fraction >>> byteSize;
-          numCount++; 
+          numCount++; // advance to next byte
           bytesStream[numCount] = fraction & bytemask;
           tempDisplace -= byteSize;
         }
         displace = tempDisplace;
-      } else { 
+      } else { // there is space for complete new code in byte
         bytesStream[numCount] = bytesStream[numCount] | newCode;
         displace += codeSize;
       }
     }
 
+    ///////
+    
     addCode(CCindex, minimumCodeSize + 1);
-
-    const codeTableDict = new Map();
-
-    while (streamStart < indexStream.length) {
-      codeTableDict.clear();
-      
+    while (streamStart <= indexStream.length) {
+      const codeTableDict = {...resetCodeTableDict};
       let currentCodeSize = minimumCodeSize + 1;
-      // (1 << currentCodeSize) is faster than Math.pow
-      let codeLengthLimit = (1 << currentCodeSize) + 1; 
-      let codeLengthCounter = EOIindex + 1; // Start at EOI + 1
+      let codeLengthLimit = Math.pow(2, currentCodeSize) + 1;
+      let codeLengthCounter = EOIindex;
   
       let indexBuffer = indexStream[streamStart];
       let i = streamStart + 1;
-
-      // Stop before 4096 (12-bit limit)
-      while (codeLengthCounter < 4096 && i < indexStream.length) {
+      while (codeLengthCounter < Math.pow(2,12) && i < indexStream.length) {
         const k = indexStream[i];
-        
-        // Bitwise key generation
-        // Shifts the prefix (indexBuffer) by 8 bits and adds the char (k)
-        // Creates a unique integer key instead of a string "1,2"
-        const combination = (indexBuffer << 8) | k;
-        
-        if (codeTableDict.has(combination)) {
-          indexBuffer = codeTableDict.get(combination);
+        const combination = `${indexBuffer},${k}`;
+        // const combination = createKey(indexBuffer, k);
+        if (codeTableDict[combination] !== undefined) {
+          indexBuffer = combination;
         } else {
-          // Add the CURRENT prefix to the stream
-          addCode(indexBuffer, currentCodeSize);
-          
-          // Add the NEW combination to the dictionary
-          codeTableDict.set(combination, codeLengthCounter);
           codeLengthCounter++;
-
           if (codeLengthCounter >= codeLengthLimit) {
             currentCodeSize++; 
-            codeLengthLimit = (1 << currentCodeSize) + 1;
+            codeLengthLimit = Math.pow(2, currentCodeSize) + 1;
           }
-          
+          const dictValue = codeTableDict[indexBuffer];
+          codeTableDict[combination] = codeLengthCounter;
+          addCode(dictValue, currentCodeSize);
           indexBuffer = k;
         }
         i++;
       }
 
-      addCode(indexBuffer, currentCodeSize);
+      addCode(codeTableDict[indexBuffer], currentCodeSize);
       streamStart = i;
-      
       if (i >= indexStream.length) {
         lastCodeSize = currentCodeSize;
         break
       }
-      
       addCode(CCindex, currentCodeSize);
     }
-    
     addCode(EOIindex, lastCodeSize);
-    return new Uint8Array(bytesStream);
+    return new Uint8Array(bytesStream)
   }
 
   getImageData(bytesStream) {
@@ -250,7 +223,7 @@ getCodeStream(indexStream, colors) {
   }
 
   download(buffer) {
-    const blob = new Blob([buffer], { type: 'image/gif' });
+    const blob = new Blob([buffer]);
     const fileName = `${this.fileName}.gif`;
     if (navigator.msSaveBlob) {
       navigator.msSaveBlob(blob, fileName);
@@ -344,104 +317,66 @@ getCodeStream(indexStream, colors) {
 
     // ARRAYBUFFER HELPERS
     function concatArrayBuffers(...bufs){
-      let totalSize = 0;
-      for (let b of bufs) totalSize += b.length;
-      const result = new Uint8Array(totalSize);
-      let offset = 0;
-      for (let b of bufs) {
-        result.set(b, offset);
-        offset += b.length;
-      }
-      return result;
+      const result = new Uint8Array(bufs.reduce((totalSize, buf)=>totalSize+buf.byteLength,0));
+      bufs.reduce((offset, buf)=>{
+        result.set(buf,offset);
+        return offset+buf.byteLength
+      },0)
+      return result
     }
 
+    function U16LE(v) {
+      const bytes = v.toString(2).padStart(16,'0');
+      const a = parseInt(bytes.slice(0, 8), 2);
+      const b = parseInt(bytes.slice(-8), 2);
+      return new Uint8Array([b, a]);
+    }
     function U16LE(v) {
       return new Uint8Array([v & 0xFF, (v >> 8) & 0xFF]);
     }
 
-    function U8(v) { 
-      return new Uint8Array([v & 0xFF]); 
-    }
+    function U8(v) { return new Uint8Array([v]) }
 
     function rawString(str) {
       const buffer = new Uint8Array(str.length);
       for (let i = 0; i < str.length; i++) {
-        buffer[i] = str.charCodeAt(i);
+        buffer[i] = str.slice(i, i+1).charCodeAt(0);
       }
-      return buffer;
+      return buffer
     }
   }
 
   /// IMAGE MANIPULATION
   errorDiffusionDither(pixels, colors) {
-    // 1. CRITICAL: Create a copy of the pixels. 
-    // We work on 'p', leaving the original 'pixels' (source) untouched.
-    const p = new Uint8Array(pixels); 
-    
+    const errorDiff = [7,3,5,1];
+    const nIndexes = [[1,0],[-1, 1],[0, 1],[1, 1]];
+    const mask = 0b11111000;
     const indexStream = new Uint8Array(pixels.length / 4);
-    const w = this.width;
-    const errorDiff = [7, 3, 5, 1];
-    // Offsets: Right, Down-Left, Down, Down-Right
-    // We pre-calculate byte offsets: (dx * 4) + (dy * width * 4)
-    // Note: We still need logic to check X boundaries so we don't wrap around lines.
-    const neighbors = [
-        { dx: 1,  dy: 0,  offset: 4 },           // Right
-        { dx: -1, dy: 1,  offset: (w * 4) - 4 }, // Down-Left
-        { dx: 0,  dy: 1,  offset: (w * 4) },     // Down
-        { dx: 1,  dy: 1,  offset: (w * 4) + 4 }  // Down-Right
-    ];
-
     let cursor = 0;
+    for (let index = 0; index < pixels.length; index += 4) {
+      const currentPixel = [pixels[index + 0] & mask, pixels[index + 1] & mask, pixels[index + 2] & mask];
+      const colorIndex = this.findClosest(currentPixel, colors);
+      const colorIndexX3 = colorIndex * 3;
+      const closest = [colors[colorIndexX3 + 0], colors[colorIndexX3+ 1], colors[colorIndexX3 + 2]];
+      const error = this.calculateError(currentPixel, closest);
 
-    // Loop through every pixel (step 4 bytes)
-    for (let i = 0; i < p.length; i += 4) {
-      const r = p[i];
-      const g = p[i + 1];
-      const b = p[i + 2];
-
-      // 2. Find closest color
-      // (Using the optimization from the previous step)
-      // Note: Passing array [r,g,b] to findClosest to match your existing signature, 
-      // or pass r,g,b separate if you updated that method.
-      const colorIndex = this.findClosest(r, g, b, colors);
-      indexStream[cursor++] = colorIndex;
-
-      // 3. Calculate Error PER CHANNEL
-      // Don't sum them up. Red error affects Red neighbors only.
-      const idx3 = colorIndex * 3;
-      const er = r - colors[idx3];
-      const eg = g - colors[idx3 + 1];
-      const eb = b - colors[idx3 + 2];
-
-      // 4. Distribute Error to Neighbors
-      const x = (i / 4) % w; // Current pixel X coordinate
-
-      for (let j = 0; j < 4; j++) {
-        const n = neighbors[j];
-
-        // Boundary checks to prevent wrapping pixels to the other side of the image
-        if (x === 0 && n.dx === -1) continue;      // Left edge
-        if (x === w - 1 && n.dx === 1) continue;   // Right edge
-
-        const ni = i + n.offset; // Neighbor Index
-
-        // Check if neighbor is within array bounds (bottom of image)
-        if (ni < p.length) {
-           const factor = errorDiff[j];
-           // Apply error with bitwise division (>> 4 is / 16)
-           // Clamp values between 0 and 255
-           let nr = p[ni]     + ((er * factor) >> 4);
-           let ng = p[ni + 1] + ((eg * factor) >> 4);
-           let nb = p[ni + 2] + ((eb * factor) >> 4);
-
-           p[ni]     = nr < 0 ? 0 : nr > 255 ? 255 : nr;
-           p[ni + 1] = ng < 0 ? 0 : ng > 255 ? 255 : ng;
-           p[ni + 2] = nb < 0 ? 0 : nb > 255 ? 255 : nb;
+      for (let i = 0; i < 3; i++) { pixels[index + i] = closest[i] }
+      
+      const x = Math.floor(index % this.width);
+      const y = Math.floor(index / this.width);
+      const lim = x === 0 || x >= this.width - 1;
+      for (let j = 0; j < nIndexes.length; j++) {
+        if ((lim && j === 1) || (lim && (j === 0 || j === 3))) continue
+        const nh = (x + (nIndexes[j][0]) * 4) + ((y + (nIndexes[j][1]) * 4) * this.width);
+        for (let i = 0; i < 3; i++) {
+          pixels[nh + i] = pixels[nh + i] + ((error * errorDiff[i]) >> 4);
         }
       }
+      indexStream[cursor] = colorIndex;
+      cursor++;
     }
 
-    return indexStream;
+    return indexStream
   }
 
   simpleQuantize(pixels, colors) {
@@ -450,38 +385,32 @@ getCodeStream(indexStream, colors) {
     const mask = 0b11110000;
     let cursor = 0;
     for (let index = 0; index < pixels.length; index += 4) {
-      const colorIndex = this.findClosest(pixels[index + 0] & mask, pixels[index + 1] & mask, pixels[index + 2] & mask, colors);
+      const currentPixel = [pixels[index + 0] & mask, pixels[index + 1] & mask, pixels[index + 2] & mask];
+      const colorIndex = this.findClosest(currentPixel, colors);
       indexStream[cursor] = colorIndex;
       cursor++;
     }
     return indexStream
   }
 
-  findClosest(r, g, b, colors) {
-    // Combine directly from arguments
-    const cs = (r << 16) | (g << 8) | b; 
-    if (this.distanceMemo[cs] !== undefined) return this.distanceMemo[cs];
+  findClosest(c, colors) {
+    const cs = this.colorCode(c);
+    if (this.distanceMemo[cs] !== undefined) return this.distanceMemo[cs]
 
     let index = 0;
-    let minDistance = Infinity; 
-    
-    for (let i = 0, len = colors.length; i < len; i += 3) {
-      // Math abs is slow, direct subtraction is faster
-      const dr = r - colors[i];
-      const dg = g - colors[i + 1];
-      const db = b - colors[i + 2];
-      
-      const distance = (dr * dr) + (dg * dg) + (db * db);
-
+    let minDistance = Number.MAX_VALUE;
+    let count = 0;
+    for (let i = 0; i < colors.length; i += 3) {
+      const slice = [colors[i + 0], colors[i + 1], colors[i + 2]];
+      const distance = this.euclideanDistance(c, slice);
       if (distance < minDistance) {
         minDistance = distance;
-        index = i / 3;
-        if (distance === 0) break; 
+        index = count;
       }
+      count++;
     }
-    
     this.distanceMemo[cs] = index;
-    return index;
+    return index
   }
 
   colorCode(rgb) {
@@ -492,78 +421,87 @@ getCodeStream(indexStream, colors) {
     return c1[0] - c2[0] +  c1[1] - c2[1] +  c1[2] - c2[2];
   }
 
-  medianCutColors(pixels) {
-    const precision = 2000; // Target roughly 2000 pixels sample
-    const step = Math.max(1, Math.floor((pixels.length / 4) / precision)) * 4;
-    
-    const cols = [];
-    for (let i = 0; i < pixels.length; i += step) {
-      cols.push([pixels[i], pixels[i+1], pixels[i+2]]);
-    }
-
-    const bins = this.medianCutRecursion([cols], this.colorTableSize);
-    
-    const averages = [];
-    for (let bin of bins) {
-      if (bin.length === 0) { averages.push([0,0,0]); continue; }
-      let r = 0, g = 0, b = 0;
-      for (let c of bin) {
-        r += c[0]; g += c[1]; b += c[2];
-      }
-      // Bitwise truncate is slightly faster than Math.floor for positive numbers
-      averages.push([ (r / bin.length) | 0, (g / bin.length) | 0, (b / bin.length) | 0 ]);
-    }
-    return averages;
+  euclideanDistance(c1, c2) {
+    const a = c1[0] - c2[0];
+    const b = c1[1] - c2[1];
+    const c = c1[2] - c2[2];
+    return ((a * a) + (b * b) + (c * c));
   }
 
-  medianCutRecursion(bins, targetBins) {
-    if (bins.length >= targetBins) return bins;
-
-    let newBins = [];
-    
-    for (let bin of bins) {
-      if (bin.length === 0) { newBins.push(bin); continue; }
-
-      let minR = 255, maxR = 0;
-      let minG = 255, maxG = 0;
-      let minB = 255, maxB = 0;
-
-      for (let c of bin) {
-        if (c[0] < minR) minR = c[0];
-        if (c[0] > maxR) maxR = c[0];
-        if (c[1] < minG) minG = c[1];
-        if (c[1] > maxG) maxG = c[1];
-        if (c[2] < minB) minB = c[2];
-        if (c[2] > maxB) maxB = c[2];
+  medianCutColors(pixels) {
+    const targetBins = this.colorTableSize;
+  
+    const cols = [];
+    let counter = 0;
+    const nrRandoms = Math.max(1000,Math.floor(2*pixels.length/1000));
+    const drops = new Array(nrRandoms).fill(0).map(() => Math.random() > 0.02); // Una secuencia de booleanos aleatorios para no calcular tantas veces
+    for (let i = 0; i < pixels.length; i+=4) { // crear el primer bin a partir de los pixels
+      if (drops[i%nrRandoms]) continue // salta pixels para hacer más pequeña la muestra
+      cols[counter] = [];
+      for (let j = 0; j < 3; j++) {
+        cols[counter][j] = pixels[i + j];
       }
-
-      const rangeR = maxR - minR;
-      const rangeG = maxG - minG;
-      const rangeB = maxB - minB;
-
-      // Determine split channel
-      let sortIdx = 0; // Red
-      let maxRange = rangeR;
-
-      if (rangeG > maxRange) {
-        maxRange = rangeG;
-        sortIdx = 1; // Green
-      }
-      if (rangeB > maxRange) {
-        sortIdx = 2; // Blue
-      }
-
-      // Sort only on the widest channel
-      bin.sort((a, b) => a[sortIdx] - b[sortIdx]);
-
-      const half = bin.length >> 1; // Bitwise divide by 2
-      newBins.push(bin.slice(0, half), bin.slice(half));
+      counter++;
     }
-    
-    // Safety check: if we can't split further (e.g. identical colors), stop
-    if (newBins.length === bins.length) return bins;
+  
+    // recursion
+    const bins = medianCutRecursion([cols], targetBins);
+    return averageBins(bins);
+  
+    function averageBins() {
+      const averages = [];
+      for (let bin of bins) {
+        const channels = {r:[], g:[], b:[]};
+        for (let ch of bin) {
+          channels.r.push(ch[0]);
+          channels.g.push(ch[1]);
+          channels.b.push(ch[2]);
+        }
+        const avg = [stats(channels.r).avg, stats(channels.g).avg, stats(channels.b).avg];
+        averages.push(avg);
+      }
+      return averages
+    }
+  
+    function medianCutRecursion(bins, targetBins) {
+      if (bins.length >= targetBins) return bins
 
-    return this.medianCutRecursion(newBins, targetBins);
+      let newBins = [];
+      for (let bin of bins) {
+        const channels = {r:[], g:[], b:[]};
+        for (let ch of bin) {
+          channels.r.push(ch[0]);
+          channels.g.push(ch[1]);
+          channels.b.push(ch[2]);
+        }
+        const maxRangeI = stats([stats(channels.r).range, stats(channels.g).range, stats(channels.b).range]).maxI; // index of channel with maxrange
+        const sorted = bin.sort((a, b)=> a[maxRangeI] - b[maxRangeI]); // ascendente
+        const half = Math.floor(sorted.length/2);
+        newBins.push(
+          sorted.slice(0, half), // primera mitad
+          sorted.slice(half) // segunda mitad
+        )
+      }
+      return medianCutRecursion(newBins, targetBins);
+    }
+
+    function stats(arr) {
+      let max = -Number.MAX_VALUE, min = Number.MAX_VALUE;
+      let minI = 0, maxI = 0;
+      let sum = 0;
+      arr.forEach((e, i) => {
+        sum += e;
+        if (max < e) {
+          max = e;
+          maxI = i;
+        }
+        if (min > e) {
+          min = e;
+          minI = i;
+        }
+      })
+      return {min, max, minI, maxI, range: max-min, avg: Math.floor(sum/arr.length)}
+    }
   }
 
   toBin(v, pad = 0) {return (v).toString(2).padStart(pad,'0')}
